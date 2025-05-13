@@ -1,0 +1,138 @@
+---
+title: "Stat 1500 Group project"
+author: "Ian Nyabereka, Ike Nyabereka, Anthony Delaney, Fawwaz Ibrahim"
+date: "2025-04-02"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+```
+
+```{r load-data}
+#opening and reading the data set, adjust file directory
+
+df = read.csv(unz("~/Downloads/adult.zip", "adult.data"), header = FALSE, na.strings = "?", stringsAsFactors = FALSE)
+# Convert "?" to NA while reading, Prevent automatic conversion to factors
+# Paste the path of the dataset
+
+#Editing column names with the appropriate names 
+colnames(df) = c('Age','Work_Class','Fnlwgt','Education','Education_Num','Marital_Status',
+                 'Occupation','Relationship_Status','Race','sex','Capital_Gain',
+                 'Capital_Loss','Hrs_wrked_per_wk','Native_Country','Income')
+
+#Converting '?' to <NA>
+df = as.data.frame(lapply(df, trimws), stringsAsFactors = FALSE) #trimws removes white space in '?' as we suspect there is white space due to difficulty to remove with less obscure methods
+df[df == "?"] = NA # Replaces "?"  values with NA
+
+# Percentage of missing values
+percentage1 <- sum(is.na(df$Native_Country)) / nrow(df) * 100
+percentage2 <- sum(is.na(df$Occupation)) / nrow(df) * 100
+percentage3 <- sum(is.na(df$Work_Class)) / nrow(df) * 100
+percentage1; percentage2; percentage3
+
+# Remove rows with any <NA> values
+df_clean = na.omit(df)
+```
+```{r convert-data}
+str(df_clean)  #Check the structure of the dataframe
+df_clean$Income = ifelse(df_clean$Income == ">50K", 1, 0) #  1 == >50K and 0 == <=50K
+df_clean$sex = ifelse(df_clean$sex == "Male", 1, 0) #  1 == Male and 0 == Female
+
+
+#DESCRIPTIVE STATS
+#Converting numeric values from characters to integers
+df_clean$Age = as.numeric(df_clean$Age)
+df_clean$Education_Num = as.numeric(df_clean$Education_Num)
+df_clean$Capital_Gain = as.numeric(df_clean$Capital_Gain)
+df_clean$Capital_Loss = as.numeric(df_clean$Capital_Loss)
+df_clean$Hrs_wrked_per_wk = as.numeric(df_clean$Hrs_wrked_per_wk)
+
+#Getting summary or numeric values
+summary(df_clean[,c('Age','Education_Num','Capital_Gain','Capital_Loss','Hrs_wrked_per_wk')])
+sd(df_clean$Age)
+sd(df_clean$Education_Num)
+sd(df_clean$Capital_Gain)
+sd(df_clean$Capital_Loss)
+sd(df_clean$Hrs_wrked_per_wk)
+```
+```{r class-imbalance}
+# Check class distribution
+table(df_clean$sex)
+table(df_clean$Education_Num)
+```
+```{r desc```{r eda-plots}
+#PLOTTING GRAPHS
+#Bar Chart: Education Level vs Income
+ggplot(df_clean, aes(x = Education_Num, fill = as.factor(Income))) +
+  geom_bar(position = "fill") +
+  labs(title = "Income Distribution by Education Level", x = "Education Level", y = "Proportion of Income Level") +
+  theme_minimal()
+
+#Boxplot: Sex vs Education 
+ggplot(df_clean, aes(x = factor(sex), y = Education_Num, fill = factor(sex))) +
+  geom_boxplot() +
+  labs(title = "Education Level by Gender", x = "Sex (0=F, 1=M)", y = "Education Level")
+
+#Bar Plot: Income vs Sex
+ggplot(df_clean, aes(x = factor(sex), fill = factor(Income))) +
+  geom_bar(position = 'fill') +
+  labs(title = 'Income by Sex', x = 'Sex (0=F, 1=M)', y = 'Proportion') +
+  scale_fill_manual(values = c("red3", "green4"), labels = c("<=50K", ">50K"))
+
+# Stacked bar plot of Income vs. Sex vs. Education Level
+ggplot(df_clean, aes(x = Education_Num, fill = factor(Income))) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ sex) +  # Facet by Sex (Male/Female)
+  labs(title = "Income vs. Sex vs. Education Level", 
+       x = "Education Level", 
+       y = "Proportion",
+       fill = "Income") +
+  scale_fill_manual(values = c("red3", "green4"), labels = c("Income <= 50K", "Income > 50K"))
+```
+```{r logit-model}
+# Logistic Regression Model
+logit_model <- glm(Income ~ Education_Num + sex, data = df_clean, family = binomial())
+# Model summary
+summary(logit_model)
+# Odds ratios
+exp(coef(logit_model))
+```
+```{r decision-tree}
+tree_model <- rpart(Income ~ Education_Num + sex, data = df_clean, method = "class")
+rpart.plot(tree_model)
+```
+```{r model-performance}
+# Model performance evaluation
+predictions <- ifelse(predict(logit_model, type = "response") > 0.5, 1, 0)
+confusionMatrix(factor(predictions), factor(df_clean$Income))
+```
+```{r random-forest}
+rf_model <- randomForest(factor(Income) ~ Education_Num + sex, data = df_clean, importance = TRUE)
+varImpPlot(rf_model)
+# Create a continuous income variable (if not already present)
+df_clean$Income_Continuous <- ifelse(df_clean$Income == 1, 50000 + runif(nrow(df_clean)), 
+                                     25000 + runif(nrow(df_clean)))
+```
+```{r linear-model}
+# Linear Regression
+lm_model <- lm(Income_Continuous ~ Education_Num + sex, data = df_clean)
+summary(lm_model)
+```
+```{r t-test}
+# T-test for income differences by gender
+t.test(Income ~ sex, data = df_clean)
+```
+```{r anova}
+# ANOVA for income differences by education level
+anova_model <- aov(Income ~ as.factor(Education_Num), data = df_clean)
+summary(anova_model)
+TukeyHSD(anova_model)
+```
